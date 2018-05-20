@@ -19,12 +19,10 @@ const int rearTrigPin = 8;
 const int rearEchoPin = 9;
 
 // defines  Sonar variables
-long frontDuration;
-float Distance[2]; //1 for front distance; 2 for rear distance
-long rearDuration;
+float Distance[2] = {0.1,0.1}; //1 for front distance; 2 for rear distance
 
 // Control variables
-float Front_Ref, Front_Error, Front_Error_Prev=0, Front_Error_Diferential_Prev=0, Front_Error_Diferential, Front_Error_Integral, u, Kp=50, Kd=4, Ki=5;
+float Front_Ref, Front_Error, Front_Error_Prev=0, Front_Error_Diferential_Prev=0, Front_Error_Diferential, Front_Error_Integral, u, Kp=100, Kd=200, Ki=100;
 
 // Encoder variables
 const int encoderIn0 = 2; // input pin for the interrupter 
@@ -81,88 +79,14 @@ void setup() {
   pinMode(encoderIn3, INPUT);
   //Set pin 13 as output LED
   pinMode(LED_BUILTIN, OUTPUT);
-  
-}
 
-
-void loop() {
-
-// ############################ Flag to Start algorithm ##############
-
-if (start == 0) {
-  GetSonar();
-  if (Distance[1] <= 0.04) {
-    start =1;
-    Serial.println("Starting algorithm");
-  }
-  return;
-}
-
-// ########################### Calibration ###########################
-
-// Calibrating the initiating wheels speed
-if (Calibrated_Initial_Speed == 0){
-  delay(2000);
-  Serial.println("Starting initial speed calibration");
-  Initial_Speed = Cal_initial_speed();
-  Serial.print("Calibration is done.\nInitial forward/backward speed is: ");
-  Serial.print(Initial_Speed[1]);
-  Serial.print(" / ");
-  Serial.println(Initial_Speed[2]);
-}
-
-// ########################### Algorithm #############################
-
-Smooth_Sonar(); // obtain distance values
-Front_Ref= 0.31; 
-Front_Error= Front_Ref-Distance[1];
-Front_Error_Diferential= (Front_Error + Front_Error_Prev)/100;
-//Front_Error_Diferential= Front_Error_Diferential_Prev + 2* (Front_Error - Front_Error_Prev);
-Front_Error_Integral= Front_Error_Integral + Front_Error/5; // Estimated sampling rate is 500 Hz
-u= -1 * (Kp*Front_Error + Kd*Front_Error_Diferential);// + Ki*Front_Error_Integral);
-
-Serial.println(Front_Error_Diferential);
-
-// Save to previous step
-Front_Error_Prev = Front_Error;
-Front_Error_Diferential_Prev = Front_Error_Diferential;
-
-// Perform output
-if (u > 0){
-  drive(u + Initial_Speed[1],u + Initial_Speed[1]);
-}
-else if (u < 0){
-  drive(u + Initial_Speed[2],u + Initial_Speed[2]);
-}
-else{
-  drive(0,0);
-}
-delay(100);
-
-/*
-// ############################ Encoder ########################
-
-detectState0=digitalRead(encoderIn0);
-   if (detectState0 == HIGH) { //If encoder output is high
-      digitalWrite(LED_BUILTIN, HIGH); //Turn on the status LED
-   }
-   else {
-      digitalWrite(LED_BUILTIN, LOW); //Turn off the status LED
-   }
-*/
+  Serial.println("Waiting for Flag to start algorithm");
 
 }
-
-
 
 // ########################## functions #######################
 
 int drive(int l, int r){
-
-  if (l > 255 || r>255){
-  Serial.println("Error: Drive input value is greater than 255");
-  return 1;
-  }
     
   char lDirection, rDirection;
   if (l >= 0){
@@ -176,6 +100,15 @@ int drive(int l, int r){
   }
   else{
     rDirection = BACKWARD;
+  }
+
+  if (abs(l) > 255 || abs(r) > 255){
+  Serial.println("Error: Drive input value is greater than 255");
+  //return 1;
+    if (abs(l) > 255)
+    l=255;
+    if (abs(r) > 255)
+    r=255;
   }
   
   Motor1->setSpeed(abs(l));
@@ -193,26 +126,12 @@ int drive(int l, int r){
 }
 
 
-void Smooth_Sonar(){
-// ############# Smoothing the sonar measurements #########
+float * GetSonar(){
 
-float F=0, R=0;
-int i=0;
-while (i<10)
-{
-  GetSonar();
-  F= F+Distance[1];
-  R= R+Distance[2];
-  i++;
-}
-Distance[1] = F/10;
-Distance[2] = R/10;
-Serial.print("Front Distance: ");
-Serial.println(Distance[1]);
-}
-
-
-void GetSonar(){
+// defines  Sonar variables
+long frontDuration;
+long rearDuration;
+static float Distance_meassured[1]; //0 for front meassured distance; 1 for rear meassured distance
 
 // ############# Checking front distance #########
 
@@ -230,11 +149,11 @@ frontDuration= pulseIn(frontEchoPin, HIGH);
 
 // Sound velocity is 0.034 cm/usec
 // Calculating the distance
-Distance[1]= 0.01*frontDuration*0.034/2; //Distance in meters
+Distance_meassured[0]= 0.01*frontDuration*0.034/2; //Distance in meters
 
 // Prints the distance on the Serial Monitor
 //Serial.print("Front Distance: ");
-//Serial.println(Distance[1]);
+//Serial.println(Distance_meassured[0]);
 
 // ############# Checking rear distance #########
 
@@ -252,23 +171,72 @@ rearDuration = pulseIn(rearEchoPin, HIGH);
 
 // Sound velocity is 0.034 cm/usec
 // Calculating the distance
-Distance[2]= 0.01*rearDuration*0.034/2; //Distance in meters
+Distance_meassured[1]= 0.01*rearDuration*0.034/2; //Distance in meters
 
 // Prints the distance on the Serial Monitor
 //Serial.print("Rear Distance: ");
-//Serial.println(Distance[2]);
+//Serial.println(Distance_meassured[1]);
 
+// ############# Wait 60 miliseconds between samplings ##############
+delay(60);
+
+return Distance_meassured;
+
+}
+
+
+void Smooth_Sonar(){
+// ############# Filtering the sonar measurements #########
+
+// Declaring array variable for sonar meassurement function
+float *Distance_meassured = GetSonar();
+
+// Low pass filter coeficient. (alpha = dt/tau). dt = Sonar sampling rate is 40 Hz. tau = above frequencies will be filtered.
+float alpha=0.5;
+
+Distance[1]= Distance[1] + alpha*(*Distance_meassured - Distance[1]);
+Distance[2]= Distance[2] + alpha*(*(Distance_meassured+1) - Distance[2]);
+
+/*
+ * Ploting 4 signals to the plotter. To check the filter's performance.
+Serial.print(*Distance_meassured);
+Serial.print(',');
+Serial.print(Distance[1]);
+Serial.print(',');
+Serial.print(*(Distance_meassured+1));
+Serial.print(',');
+Serial.println(Distance[2]);
+*/
+
+/*
+Serial.println("Front , Rear Distances: ");
+Serial.print(Distance[1]);
+Serial.print(" , ");
+Serial.println(Distance[2]);
+*/
+}
+
+
+void Sonar_reading_check(){
+  Smooth_Sonar();
+  Serial.println("Front , Rear Distances: ");
+  Serial.print(Distance[1]);
+  Serial.print(",");
+  Serial.println(Distance[2]);
 }
 
 
 int * Cal_initial_speed(){
   
   // ####################### Calibrating forward speed
+  
+  int i=0, j;
+  for (j=0; j<50; j++){
   Smooth_Sonar();
+  }
   float front = Distance[1];
-  int i=0;
   // While the car isn't moving => raise the velocity
-  while (abs(front - Distance[1]) <= 0.01){
+  while (abs(front - Distance[1]) <= 0.02){
     drive(++i,++i);
     delay(500);
     Smooth_Sonar();
@@ -277,14 +245,21 @@ int * Cal_initial_speed(){
   delay(2000);
   Initial_Speed[1] = i; // Substitute forward initial speed
   Serial.println("Initial forward speed is calibrated");
+  Serial.println("For reference, the last 2 Front Distance readings were: ");
+  Serial.print(Distance[1]);
+  Serial.print(" / ");
+  Serial.println(front);
 
 
   // ######################## Calibrating backward speed
+  
+  for (j=0; j<50; j++){
   Smooth_Sonar();
+  }
   front = Distance[1];
   i=0;
   // While the car isn't moving => raise the velocity
-  while (abs(front - Distance[1]) <= 0.01){
+  while (abs(front - Distance[1]) <= 0.02){
     drive(--i,--i);
     delay(500);
     Smooth_Sonar();
@@ -292,9 +267,104 @@ int * Cal_initial_speed(){
   drive(0,0);
   delay(2000);
   Initial_Speed[2] = i; // Substitute backward initial speed
-Serial.println("Initial backward speed is calibrated");
+  Serial.println("Initial backward speed is calibrated");
+  Serial.println("For reference, the last 2 Front Distance readings were: ");
+  Serial.print(Distance[1]);
+  Serial.print(" / ");
+  Serial.println(front);
     
   Calibrated_Initial_Speed = 1; // UnFlag the need for calibration
   return Initial_Speed;
+}
+
+
+void loop() {
+
+// ########################### Sonar reading check ###################
+/*
+Sonar_reading_check();
+return;
+*/
+// ############################ Flag to Start algorithm ##############
+
+if (start == 0) {
+  Smooth_Sonar();
+  if (Distance[1] <= 0.04) {
+    start =1;
+    Serial.println("Flag received - Starting algorithm");
+  }
+  return;
+}
+
+// ########################### Calibration ###########################
+/*
+// Calibrating the initiating wheels speed
+if (Calibrated_Initial_Speed == 0){
+  delay(2000);
+  Serial.println("For reference, Front/Rear Distances are: ");
+  Serial.print(Distance[1]);
+  Serial.print(" / ");
+  Serial.println(Distance[2]);
+  Serial.println("Starting initial speed calibration");
+  Initial_Speed = Cal_initial_speed();
+  Serial.print("Calibration is done.\nInitial forward/backward speed is: ");
+  Serial.print(Initial_Speed[1]);
+  Serial.print(" / ");
+  Serial.println(Initial_Speed[2]);
+}
+*/
+// ########################### Algorithm #############################
+
+Smooth_Sonar(); // obtain distance values
+Front_Ref= 0.70; 
+Front_Error= Front_Ref-Distance[1];
+Front_Error_Diferential= (Front_Error + Front_Error_Prev)/2;
+//Front_Error_Diferential= Front_Error_Diferential_Prev + 2* (Front_Error - Front_Error_Prev);
+Front_Error_Integral= Front_Error_Integral + Front_Error/10; // Estimated sampling rate is 500 Hz
+u= -1 * (Kp*Front_Error + Kd*Front_Error_Diferential + Ki*Front_Error_Integral);
+
+Serial.print(Front_Ref);
+Serial.print(",");
+Serial.print(Front_Error);
+Serial.print(",");
+Serial.print(Front_Error_Diferential);
+Serial.print(",");
+Serial.println(Front_Error_Integral);
+//Serial.print(",");
+//Serial.println(u);
+
+// Save to previous step
+Front_Error_Prev = Front_Error;
+Front_Error_Diferential_Prev = Front_Error_Diferential;
+
+// Perform output w/o calibration
+drive(u,u);
+
+/*
+// Apply calibration and Perform output
+if (u > 0){
+  drive(u + Initial_Speed[1],u + Initial_Speed[1]);
+}
+else if (u < 0){
+  drive(u + Initial_Speed[2],u + Initial_Speed[2]);
+}
+else{
+  drive(0,0);
+}
+*/
+delay(100);
+
+/*
+// ############################ Encoder ########################
+
+detectState0=digitalRead(encoderIn0);
+   if (detectState0 == HIGH) { //If encoder output is high
+      digitalWrite(LED_BUILTIN, HIGH); //Turn on the status LED
+   }
+   else {
+      digitalWrite(LED_BUILTIN, LOW); //Turn off the status LED
+   }
+*/
+
 }
 
