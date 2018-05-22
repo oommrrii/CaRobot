@@ -19,7 +19,7 @@ const int rearTrigPin = 8;
 const int rearEchoPin = 9;
 
 // defines  Sonar variables
-float Distance[2] = {0.1,0.1}; //1 for front distance; 2 for rear distance
+float Distance[2] = {0.1,0.1}; //0 for front distance; 1 for rear distance
 
 // Control variables
 float Front_Ref, Front_Error, Front_Error_Prev=0, Front_Error_Diferential_Prev=0, Front_Error_Diferential, Front_Error_Integral, u, Kp=100, Kd=200, Ki=100;
@@ -131,7 +131,7 @@ float * GetSonar(){
 // defines  Sonar variables
 long frontDuration;
 long rearDuration;
-static float Distance_meassured[1]; //0 for front meassured distance; 1 for rear meassured distance
+static float Distance_meassured[2]; //0 for front meassured distance; 1 for rear meassured distance
 
 // ############# Checking front distance #########
 
@@ -194,25 +194,25 @@ float *Distance_meassured = GetSonar();
 // Low pass filter coeficient. (alpha = dt/tau). dt = Sonar sampling rate is 40 Hz. tau = above frequencies will be filtered.
 float alpha=0.5;
 
-Distance[1]= Distance[1] + alpha*(*Distance_meassured - Distance[1]);
-Distance[2]= Distance[2] + alpha*(*(Distance_meassured+1) - Distance[2]);
+Distance[0]= Distance[0] + alpha*(*Distance_meassured - Distance[0]);
+Distance[1]= Distance[1] + alpha*(*(Distance_meassured+1) - Distance[1]);
 
 /*
  * Ploting 4 signals to the plotter. To check the filter's performance.
 Serial.print(*Distance_meassured);
 Serial.print(',');
-Serial.print(Distance[1]);
+Serial.print(Distance[0]);
 Serial.print(',');
 Serial.print(*(Distance_meassured+1));
 Serial.print(',');
-Serial.println(Distance[2]);
+Serial.println(Distance[1]);
 */
 
 /*
 Serial.println("Front , Rear Distances: ");
-Serial.print(Distance[1]);
+Serial.print(Distance[0]);
 Serial.print(" , ");
-Serial.println(Distance[2]);
+Serial.println(Distance[1]);
 */
 }
 
@@ -220,9 +220,9 @@ Serial.println(Distance[2]);
 void Sonar_reading_check(){
   Smooth_Sonar();
   Serial.println("Front , Rear Distances: ");
-  Serial.print(Distance[1]);
+  Serial.print(Distance[0]);
   Serial.print(",");
-  Serial.println(Distance[2]);
+  Serial.println(Distance[1]);
 }
 
 
@@ -234,19 +234,19 @@ int * Cal_initial_speed(){
   for (j=0; j<50; j++){
   Smooth_Sonar();
   }
-  float front = Distance[1];
+  float front = Distance[0];
   // While the car isn't moving => raise the velocity
-  while (abs(front - Distance[1]) <= 0.02){
+  while (abs(front - Distance[0]) <= 0.02){
     drive(++i,++i);
     delay(500);
     Smooth_Sonar();
   }
   drive(0,0);
   delay(2000);
-  Initial_Speed[1] = i; // Substitute forward initial speed
+  Initial_Speed[0] = i; // Substitute forward initial speed
   Serial.println("Initial forward speed is calibrated");
   Serial.println("For reference, the last 2 Front Distance readings were: ");
-  Serial.print(Distance[1]);
+  Serial.print(Distance[0]);
   Serial.print(" / ");
   Serial.println(front);
 
@@ -256,20 +256,20 @@ int * Cal_initial_speed(){
   for (j=0; j<50; j++){
   Smooth_Sonar();
   }
-  front = Distance[1];
+  front = Distance[0];
   i=0;
   // While the car isn't moving => raise the velocity
-  while (abs(front - Distance[1]) <= 0.02){
+  while (abs(front - Distance[0]) <= 0.02){
     drive(--i,--i);
     delay(500);
     Smooth_Sonar();
   }
   drive(0,0);
   delay(2000);
-  Initial_Speed[2] = i; // Substitute backward initial speed
+  Initial_Speed[1] = i; // Substitute backward initial speed
   Serial.println("Initial backward speed is calibrated");
   Serial.println("For reference, the last 2 Front Distance readings were: ");
-  Serial.print(Distance[1]);
+  Serial.print(Distance[0]);
   Serial.print(" / ");
   Serial.println(front);
     
@@ -289,7 +289,7 @@ return;
 
 if (start == 0) {
   Smooth_Sonar();
-  if (Distance[1] <= 0.04) {
+  if (Distance[0] <= 0.04) {
     start =1;
     Serial.println("Flag received - Starting algorithm");
   }
@@ -302,22 +302,22 @@ if (start == 0) {
 if (Calibrated_Initial_Speed == 0){
   delay(2000);
   Serial.println("For reference, Front/Rear Distances are: ");
-  Serial.print(Distance[1]);
+  Serial.print(Distance[0]);
   Serial.print(" / ");
-  Serial.println(Distance[2]);
+  Serial.println(Distance[1]);
   Serial.println("Starting initial speed calibration");
   Initial_Speed = Cal_initial_speed();
   Serial.print("Calibration is done.\nInitial forward/backward speed is: ");
-  Serial.print(Initial_Speed[1]);
+  Serial.print(Initial_Speed[0]);
   Serial.print(" / ");
-  Serial.println(Initial_Speed[2]);
+  Serial.println(Initial_Speed[1]);
 }
 */
 // ########################### Algorithm #############################
 
 Smooth_Sonar(); // obtain distance values
 Front_Ref= 0.70; 
-Front_Error= Front_Ref-Distance[1];
+Front_Error= Front_Ref-Distance[0];
 Front_Error_Diferential= (Front_Error + Front_Error_Prev)/2;
 //Front_Error_Diferential= Front_Error_Diferential_Prev + 2* (Front_Error - Front_Error_Prev);
 Front_Error_Integral= Front_Error_Integral + Front_Error/10; // Estimated sampling rate is 500 Hz
@@ -343,10 +343,10 @@ drive(u,u);
 /*
 // Apply calibration and Perform output
 if (u > 0){
-  drive(u + Initial_Speed[1],u + Initial_Speed[1]);
+  drive(u + Initial_Speed[0],u + Initial_Speed[0]);
 }
 else if (u < 0){
-  drive(u + Initial_Speed[2],u + Initial_Speed[2]);
+  drive(u + Initial_Speed[1],u + Initial_Speed[1]);
 }
 else{
   drive(0,0);
