@@ -1,3 +1,4 @@
+#include <TimerOne.h>
 //#include <Wire.h>
 #include <Adafruit_MotorShield.h>
 
@@ -25,14 +26,15 @@ float Distance[2] = {0.1,0.1}; //0 for front distance; 1 for rear distance
 float Front_Ref, Front_Error, Front_Error_Prev=0, Front_Error_Diferential_Prev=0, Front_Error_Diferential, Front_Error_Integral, u, Kp=100, Kd=200, Ki=100;
 
 // Encoder variables
-const int encoderIn0 = 2; // input pin for the interrupter 
-const int encoderIn1 = 3; // input pin for the interrupter 
-const int encoderIn2 = 4; // input pin for the interrupter 
-const int encoderIn3 = 5; // input pin for the interrupter 
-int detectState0=0; // Variable for reading the encoder status
-int detectState1=0; // Variable for reading the encoder status
-int detectState2=0; // Variable for reading the encoder status
+const int encoder0 = 2; // input pin for the interrupter 
+const int encoder1 = 3; // input pin for the interrupter 
+const int encoder2 = 4; // input pin for the interrupter 
+const int encoder3 = 5; // input pin for the interrupter 
 int detectState3=0; // Variable for reading the encoder status
+unsigned int counter0=0; // counter for number of encoder triggers
+unsigned int counter1=0; // counter for number of encoder triggers
+float rotation0=0;
+float rotation1=0;
 
 // Flags:
 bool start = 0, Calibrated_Initial_Speed = 0;
@@ -72,13 +74,17 @@ void setup() {
   pinMode(rearEchoPin, INPUT); // Sets the echoPin as an Input
 
 
-  //Set input pins
-  pinMode(encoderIn0, INPUT);
-  pinMode(encoderIn1, INPUT);
-  pinMode(encoderIn2, INPUT);
-  pinMode(encoderIn3, INPUT);
+  //Set input pins for encoders
+  pinMode(encoder3, INPUT);
+  
   //Set pin 13 as output LED
-  pinMode(LED_BUILTIN, OUTPUT);
+  pinMode(13, OUTPUT);
+
+  // Setup timed interrupts for encoders
+  Timer1.initialize(1000000); // set timer for 1sec
+  attachInterrupt(0, docount0, RISING);  // increase counter when speed sensor pin goes High
+  attachInterrupt(1, docount1, RISING);  // increase counter when speed sensor pin goes High
+  Timer1.attachInterrupt( timerIsr ); // enable the timer
 
   Serial.println("Waiting for Flag to start algorithm");
 
@@ -278,6 +284,36 @@ int * Cal_initial_speed(){
 }
 
 
+void timerIsr(){
+  Timer1.detachInterrupt();  //stop the timer
+  rotation0 = ((float)counter0 / (float)20);  // divide by number of holes in Disc [rps]
+  rotation1 = ((float)counter1 / (float)20);  // divide by number of holes in Disc [rps]
+  display_encoder_reading();
+  counter0=0;  //  reset counter to zero
+  counter1=0;  //  reset counter to zero
+  Timer1.attachInterrupt( timerIsr );  //enable the timer
+}
+
+
+void display_encoder_reading(){
+  Serial.print("Motors Speed (L/R): "); 
+  Serial.print(rotation0);  
+  Serial.print("/");  
+  Serial.print(rotation1);  
+  Serial.println(" Rotations per second");   
+}
+
+
+void docount0(){  // counts from the speed sensor
+  counter0++;  // increase +1 the counter value
+} 
+
+
+void docount1(){  // counts from the speed sensor
+  counter1++;  // increase +1 the counter value
+} 
+
+
 void loop() {
 
 // ########################### Sonar reading check ###################
@@ -287,13 +323,12 @@ return;
 */
 // ############################ Flag to Start algorithm ##############
 
-if (start == 0) {
+while (start == 0) {
   Smooth_Sonar();
   if (Distance[0] <= 0.04) {
     start =1;
     Serial.println("Flag received - Starting algorithm");
   }
-  return;
 }
 
 // ########################### Calibration ###########################
@@ -314,7 +349,7 @@ if (Calibrated_Initial_Speed == 0){
 }
 */
 // ########################### Algorithm #############################
-
+/*
 Smooth_Sonar(); // obtain distance values
 Front_Ref= 0.70; 
 Front_Error= Front_Ref-Distance[0];
@@ -323,13 +358,13 @@ Front_Error_Diferential= (Front_Error + Front_Error_Prev)/2;
 Front_Error_Integral= Front_Error_Integral + Front_Error/10; // Estimated sampling rate is 500 Hz
 u= -1 * (Kp*Front_Error + Kd*Front_Error_Diferential + Ki*Front_Error_Integral);
 
-Serial.print(Front_Ref);
-Serial.print(",");
-Serial.print(Front_Error);
-Serial.print(",");
-Serial.print(Front_Error_Diferential);
-Serial.print(",");
-Serial.println(Front_Error_Integral);
+//Serial.print(Front_Ref);
+//Serial.print(",");
+//Serial.print(Front_Error);
+//Serial.print(",");
+//Serial.print(Front_Error_Diferential);
+//Serial.print(",");
+//Serial.println(Front_Error_Integral);
 //Serial.print(",");
 //Serial.println(u);
 
@@ -354,17 +389,17 @@ else{
 */
 delay(100);
 
-/*
 // ############################ Encoder ########################
 
-detectState0=digitalRead(encoderIn0);
-   if (detectState0 == HIGH) { //If encoder output is high
-      digitalWrite(LED_BUILTIN, HIGH); //Turn on the status LED
+detectState3=digitalRead(encoder3);
+
+
+   if (detectState3 == HIGH) { //If encoder output is high
+      digitalWrite(13, HIGH); //Turn on the status LED
    }
    else {
-      digitalWrite(LED_BUILTIN, LOW); //Turn off the status LED
+      digitalWrite(13, LOW); //Turn off the status LED
    }
-*/
 
 }
 
